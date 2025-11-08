@@ -1,0 +1,41 @@
+<!-- mapa.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TruckRoute - Mapa</title>
+
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+</head>
+<body>
+<header class="app-header">
+  <img src="images/logo-removebg-preview.png" alt="logo" class="logo-centro">
+    <div class="nav-links">
+    <a href="index.html">Login</a>
+    <a href="camion.html">Configurar camión</a>
+    <a href="mapa.html">Mapa</a>
+  </div>
+</header>
+
+  <div class="controls">
+    <input id="origen" placeholder="Origen (p. ej. Ibagué)" />
+    <input id="destino" placeholder="Destino (p. ej. Medellín)" />
+    <button id="buscarBtn" class="btn">Calcular ruta</button>
+    <button id="markOriginBtn" class="btn secondary">Marcar origen (click)</button>
+    <button id="markDestBtn" class="btn secondary">Marcar destino (click)</button>
+    <div id="infoRuta" class="small"></div>
+  </div>
+
+  <div class="container_map">
+    <div id="map" class="card"></div>
+  </div>
+
+  <footer class="footer">© TruckRoute</footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="js/mapa.js"></script>
+</body>
+</html>

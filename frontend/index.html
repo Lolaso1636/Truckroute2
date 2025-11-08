@@ -1,0 +1,73 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TruckRoute - Login</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+<header class="app-header">
+  <img src="images/logo-removebg-preview.png" alt="logo" class="logo-centro">
+  
+  <div class="nav-links">
+    <a href="index.html">Login</a>
+    <a href="camion.html">Configurar camión</a>
+    <a href="mapa.html">Mapa</a>
+  </div>
+</header>
+
+
+
+  <main class="container">
+    <div class="card auth-grid">
+      <div>
+        <h2>Iniciar sesión</h2>
+        <div class="form-group">
+          <label for="loginEmail">Correo</label>
+          <input id="loginEmail" type="email" placeholder="email@ejemplo.com" />
+        </div>
+        <div class="form-group">
+          <label for="loginPass">Contraseña</label>
+          <input id="loginPass" type="password" />
+        </div>
+        <button class="btn" id="loginBtn">Iniciar sesión</button>
+      </div>
+
+      <div>
+        <h2>Registrarse</h2>
+        <div class="form-group">
+          <label for="regName">Nombre</label>
+          <input id="regName" type="text" placeholder="David Vargas" />
+        </div>
+        <div class="form-group">
+          <label for="regEmail">Correo</label>
+          <input id="regEmail" type="email" placeholder="email@ejemplo.com" />
+        </div>
+        <div class="form-group">
+          <label for="regPass">Contraseña</label>
+          <input id="regPass" type="password" />
+        </div>
+        <div class="form-group">
+          <label for="regTipo">Tipo de camión (opcional)</label>
+          <select id="regTipo">
+            <option value="">- seleccionar -</option>
+            <option value="mula">Mula</option>
+            <option value="sencillo">Sencillo</option>
+            <option value="turbo">Turbo</option>
+            <option value="grua">Grúa</option>
+            <option value="patineta">Patineta</option>
+          </select>
+        </div>
+        <button class="btn" id="registerBtn">Crear cuenta</button>
+        <p class="small">Al registrarte se guardará una cuenta local (localStorage) para pruebas. En el backend guardaremos en DB.</p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">© 2025 TruckRoute - Demo frontend</footer>
+
+  <script src="js/login.js"></script>
+</body>
+</html>
