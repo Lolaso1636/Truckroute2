@@ -40,7 +40,7 @@ app.post('/api/ruta', async (req, res) => {
   if (!ORS_API_KEY) return res.status(500).json({ error: 'ORS_API_KEY no configurada en proxy (.env)' });
   try {
     const r = await axios.post(
-      'https://api.openrouteservice.org/v2/directions/driving-hgv/geojson',
+      'https://api.openrouteservice.org/v2/directions/driving-car/geojson',
       req.body,
       {
         headers: {

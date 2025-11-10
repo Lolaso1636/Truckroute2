@@ -151,5 +151,109 @@ app.get('/api/trips', authMiddleware, async (req, res) => {
   }
 });
 
+const axios = require('axios');
+
+// === Geocodificación: ciudad → coordenadas ===
+app.get('/api/geocode', async (req, res) => {
+  const q = req.query.q;
+  if (!q) return res.status(400).json({ error: 'Falta parámetro q' });
+  try {
+    const r = await axios.get('https://api.openrouteservice.org/geocode/search', {
+      params: { api_key: process.env.ORS_API_KEY, text: q, size: 1 }
+    });
+    if (!r.data.features?.length) {
+      return res.status(404).json({ error: 'No se encontraron coordenadas' });
+    }
+    const coords = r.data.features[0].geometry.coordinates; // [lng, lat]
+    // devolver tanto en [lng,lat] como en {lat, lng} para evitar confusiones
+    res.json({ coords, latlng: { lat: coords[1], lng: coords[0] } });
+  } catch (e) {
+    console.error('Error en /api/geocode', e.response?.data || e.message);
+    res.status(500).json({ error: 'Fallo geocodificación', detalle: e.response?.data || e.message });
+  }
+});
+
+
+// === Ruta: coordenadas → distancia y duración ===
+// === Ruta: coordenadas → distancia y duración ===
+// === Ruta: coordenadas -> distancia y duración (con logging y fallback) ===
+// === Ruta: coordenadas -> distancia y duración (con logging y fallback) ===
+// === Ruta: coordenadas -> distancia y duración (robusta) ===
+app.get('/api/ruta', async (req, res) => {
+  const { start, end } = req.query;
+  if (!start || !end) return res.status(400).json({ error: 'Faltan parámetros start y end (format: lng,lat)' });
+
+  try {
+    console.log('---- /api/ruta request raw ----', { start, end });
+
+    const parsePair = s => s.split(',').map(Number);
+    const p1 = parsePair(start); // esperamos [lng, lat]
+    const p2 = parsePair(end);
+
+    if (p1.length !== 2 || p2.length !== 2 || p1.some(isNaN) || p2.some(isNaN)) {
+      return res.status(400).json({ error: 'Formato inválido de start/end. Debe ser "lng,lat" con números' });
+    }
+
+    // Asumimos start/end vienen "lng,lat"
+    let [lon1, lat1] = p1;
+    let [lon2, lat2] = p2;
+
+    // Sanity check: lat debe estar en [-90,90]. Si no, intentamos swap (probable caso lat,lng)
+    if (Math.abs(lat1) > 90 || Math.abs(lat2) > 90) {
+      console.warn('Saneamiento: parece que las coordenadas vienen invertidas; aplicando swap');
+      // swap
+      lon1 = p1[1]; lat1 = p1[0];
+      lon2 = p2[1]; lat2 = p2[0];
+    }
+
+    console.log('Parsed coords to use (lon,lat):', { lon1, lat1, lon2, lat2 });
+
+    // Intento ORS (driving-car)
+    try {
+      const r = await axios.post(
+        'https://api.openrouteservice.org/v2/directions/driving-car',
+        { coordinates: [[lon1, lat1], [lon2, lat2]] },
+        { headers: { 'Content-Type': 'application/json', 'Authorization': process.env.ORS_API_KEY }, timeout: 15000 }
+      );
+
+      if (!r.data?.routes?.length) throw new Error('ORS no devolvió rutas');
+
+      const route = r.data.routes[0];
+      // convertir coords a [lat,lng] para Leaflet
+      const coordsLatLng = (route.geometry.coordinates || []).map(c => [c[1], c[0]]);
+      return res.json({ distance_m: route.summary.distance, duration_s: route.summary.duration, coords: coordsLatLng });
+    } catch (orsErr) {
+      console.error('ORS error:', orsErr.response?.status, orsErr.response?.data || orsErr.message);
+
+      // Fallback OSRM (sin key) para no quedarnos parados
+      try {
+        console.log('Intentando fallback con OSRM público...');
+        const coordsStr = `${lon1},${lat1};${lon2},${lat2}`;
+        const osrmUrl = `http://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
+        const or = await axios.get(osrmUrl, { timeout: 15000 });
+        if (!or.data?.routes?.length) throw new Error('OSRM no devolvió rutas');
+        const r2 = or.data.routes[0];
+        const coords = r2.geometry.coordinates.map(c => [c[1], c[0]]);
+        return res.json({ distance_m: r2.distance, duration_s: r2.duration, coords });
+      } catch (osrmErr) {
+        console.error('OSRM fallback error:', osrmErr.response?.data || osrmErr.message);
+        return res.status(500).json({
+          error: 'ORS y OSRM fallaron',
+          ors: orsErr.response?.data || orsErr.message,
+          osrm: osrmErr.response?.data || osrmErr.message
+        });
+      }
+    }
+
+  } catch (e) {
+    console.error('Unexpected /api/ruta error:', e && e.stack ? e.stack : e);
+    res.status(500).json({ error: 'Error interno', detalle: e.message || e });
+  }
+});
+
+
+
+
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log('API listening on', PORT));

@@ -126,37 +126,34 @@ document.addEventListener("DOMContentLoaded", () => {
       infoBox.textContent = "Solicitando ruta al servicio...";
 
       // prepara body para proxy ORS (driving-hgv usa profile params si se envían)
+            // --- NUEVO BLOQUE: llamada directa al backend ---
       const truck = await loadTruckConfig();
       const pesoKg = truck ? Number(truck.pesoKg || 0) : 0;
       const tipo = truck ? (truck.tipo || 'camion') : 'camion';
 
-      // altura por tipo (ejemplo)
-      let altura = 3.8;
-      if (tipo === 'mula') altura = 4.2;
-      if (tipo === 'grua') altura = 3.8;
-      if (tipo === 'patineta') altura = 4.0;
+      // enviar coordenadas al backend
+      const startParam = `${start[1]},${start[0]}`; // lng,lat
+      const endParam = `${end[1]},${end[0]}`;       // lng,lat
 
-      const body = {
-        coordinates: [[ start[1], start[0] ], [ end[1], end[0] ]],
-        profile_params: {}
-      };
-      if (pesoKg > 0) body.profile_params.weight = pesoKg;
-      if (altura > 0) body.profile_params.height = altura;
-      if (pesoKg > 0) body.profile_params.axleload = +(pesoKg / 4).toFixed(2);
+      infoBox.textContent = "Solicitando ruta al backend...";
+      const r = await axios.get(`${API_BASE}/api/ruta`, {
+        params: { start: startParam, end: endParam },
+        timeout: 30000
+      });
 
-      // llamar al proxy
-      const r = await axios.post(`${PROXY_BASE}/api/ruta`, body, { timeout: 30000 });
       const data = r.data;
+      const coords = data.coords || [];
+      const distanceMeters = data.distance_m || 0;
+      const durationSeconds = data.duration_s || 0;
 
-      currentRouteLayer = L.geoJSON(data, { style: { color: 'blue', weight: 4 } }).addTo(map);
-
-      // extraer resumen
-      let distanceMeters = 0, durationSeconds = 0;
-      try {
-        const summary = data.features[0].properties.summary;
-        distanceMeters = summary.distance || 0;
-        durationSeconds = summary.duration || 0;
-      } catch (e) { console.warn('no summary', e); }
+      // dibujar la ruta
+      if (currentRouteLayer) { try { map.removeLayer(currentRouteLayer); } catch(_){}; currentRouteLayer = null; }
+      if (coords.length > 0) {
+        currentRouteLayer = L.polyline(coords, { color: 'blue', weight: 4 }).addTo(map);
+        map.fitBounds(currentRouteLayer.getBounds(), { padding: [40,40] });
+      } else {
+        alert("No se recibieron coordenadas para dibujar la ruta");
+      }
 
       const { factorTipo, factorPeso, factorTotal } = totalMultiplier(tipo, pesoKg);
       const adjustedSeconds = Math.round(durationSeconds * factorTotal);
