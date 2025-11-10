@@ -5,6 +5,7 @@ const cors = require('cors');
 const db = require('./db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const axios = require('axios');
 
 const app = express();
 
@@ -20,10 +21,11 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret';
 const JWT_EXP = '7d';
 
 // ---- util ----
-function genToken(payload){
+function genToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXP });
 }
-function authMiddleware(req, res, next){
+
+function authMiddleware(req, res, next) {
   const auth = req.headers.authorization;
   if (!auth) return res.status(401).json({ error: 'No token' });
   const parts = auth.split(' ');
@@ -33,7 +35,7 @@ function authMiddleware(req, res, next){
     const data = jwt.verify(token, JWT_SECRET);
     req.user = data;
     next();
-  } catch (e){
+  } catch (e) {
     return res.status(401).json({ error: 'Token inválido' });
   }
 }
@@ -91,19 +93,47 @@ app.get('/api/user', authMiddleware, async (req, res) => {
 
 // guardar config del camión
 app.post('/api/truck', authMiddleware, async (req, res) => {
-  const { tipo, pesoKg, alto, ancho, meta } = req.body;
+  // aceptar pesoKg o peso_kg (por si el frontend usa otro nombre)
+  const { tipo } = req.body;
+  let pesoKg = req.body.pesoKg ?? req.body.peso_kg ?? null;
+  let alto = req.body.alto ?? null;
+  let ancho = req.body.ancho ?? null;
+  const meta = req.body.meta ?? null;
+
+  // convertir a números si vienen como strings
+  if (typeof pesoKg === 'string') {
+    const p = parseFloat(pesoKg);
+    pesoKg = Number.isFinite(p) ? p : null;
+  }
+  if (typeof alto === 'string') {
+    const a = parseFloat(alto);
+    alto = Number.isFinite(a) ? a : null;
+  }
+  if (typeof ancho === 'string') {
+    const b = parseFloat(ancho);
+    ancho = Number.isFinite(b) ? b : null;
+  }
+
   try {
-    const existing = await db.query('SELECT id FROM truck_configs WHERE user_id=$1', [req.user.id]);
+    // si ya existe una config, actualizamos solo los campos que vinieron (no sobrescribir con null a menos que explícito)
+    const existing = await db.query('SELECT * FROM truck_configs WHERE user_id=$1', [req.user.id]);
+
     if (existing.rows.length) {
+      const cur = existing.rows[0];
+      const newTipo = tipo ?? cur.tipo;
+      const newPeso = pesoKg !== null ? pesoKg : cur.peso_kg;
+      const newAlto = alto !== null ? alto : cur.alto;
+      const newAncho = ancho !== null ? ancho : cur.ancho;
       const upd = await db.query(
         `UPDATE truck_configs SET tipo=$1, peso_kg=$2, alto=$3, ancho=$4, meta=$5, updated_at = now() WHERE user_id=$6 RETURNING *`,
-        [tipo, pesoKg, alto, ancho, meta || null, req.user.id]
+        [newTipo, newPeso, newAlto, newAncho, meta || cur.meta, req.user.id]
       );
       return res.json({ truck: upd.rows[0] });
     } else {
+      // si no existe, insertar (si peso null, insertar NULL en DB)
       const ins = await db.query(
         `INSERT INTO truck_configs (user_id, tipo, peso_kg, alto, ancho, meta) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [req.user.id, tipo, pesoKg, alto, ancho, meta || null]
+        [req.user.id, tipo || null, pesoKg, alto, ancho, meta || null]
       );
       return res.json({ truck: ins.rows[0] });
     }
@@ -112,6 +142,7 @@ app.post('/api/truck', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Error guardando config' });
   }
 });
+
 
 // obtener config del camión del usuario
 app.get('/api/truck', authMiddleware, async (req, res) => {
@@ -151,8 +182,6 @@ app.get('/api/trips', authMiddleware, async (req, res) => {
   }
 });
 
-const axios = require('axios');
-
 // === Geocodificación: ciudad → coordenadas ===
 app.get('/api/geocode', async (req, res) => {
   const q = req.query.q;
@@ -173,12 +202,7 @@ app.get('/api/geocode', async (req, res) => {
   }
 });
 
-
 // === Ruta: coordenadas → distancia y duración ===
-// === Ruta: coordenadas → distancia y duración ===
-// === Ruta: coordenadas -> distancia y duración (con logging y fallback) ===
-// === Ruta: coordenadas -> distancia y duración (con logging y fallback) ===
-// === Ruta: coordenadas -> distancia y duración (robusta) ===
 app.get('/api/ruta', async (req, res) => {
   const { start, end } = req.query;
   if (!start || !end) return res.status(400).json({ error: 'Faltan parámetros start y end (format: lng,lat)' });
@@ -213,28 +237,45 @@ app.get('/api/ruta', async (req, res) => {
       const r = await axios.post(
         'https://api.openrouteservice.org/v2/directions/driving-car',
         { coordinates: [[lon1, lat1], [lon2, lat2]] },
-        { headers: { 'Content-Type': 'application/json', 'Authorization': process.env.ORS_API_KEY }, timeout: 15000 }
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': process.env.ORS_API_KEY
+          },
+          timeout: 15000
+        }
       );
 
       if (!r.data?.routes?.length) throw new Error('ORS no devolvió rutas');
 
       const route = r.data.routes[0];
-      // convertir coords a [lat,lng] para Leaflet
-      const coordsLatLng = (route.geometry.coordinates || []).map(c => [c[1], c[0]]);
-      return res.json({ distance_m: route.summary.distance, duration_s: route.summary.duration, coords: coordsLatLng });
+      const coordsLatLng = route.geometry.coordinates.map(c => [c[1], c[0]]);
+
+      return res.json({
+        distance_m: route.summary.distance,
+        duration_s: route.summary.duration,
+        coords: coordsLatLng
+      });
     } catch (orsErr) {
       console.error('ORS error:', orsErr.response?.status, orsErr.response?.data || orsErr.message);
 
-      // Fallback OSRM (sin key) para no quedarnos parados
+      // 🔁 Fallback con OSRM público
       try {
         console.log('Intentando fallback con OSRM público...');
         const coordsStr = `${lon1},${lat1};${lon2},${lat2}`;
         const osrmUrl = `http://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
         const or = await axios.get(osrmUrl, { timeout: 15000 });
+
         if (!or.data?.routes?.length) throw new Error('OSRM no devolvió rutas');
+
         const r2 = or.data.routes[0];
         const coords = r2.geometry.coordinates.map(c => [c[1], c[0]]);
-        return res.json({ distance_m: r2.distance, duration_s: r2.duration, coords });
+
+        return res.json({
+          distance_m: r2.distance,
+          duration_s: r2.duration,
+          coords
+        });
       } catch (osrmErr) {
         console.error('OSRM fallback error:', osrmErr.response?.data || osrmErr.message);
         return res.status(500).json({
@@ -244,16 +285,12 @@ app.get('/api/ruta', async (req, res) => {
         });
       }
     }
-
   } catch (e) {
-    console.error('Unexpected /api/ruta error:', e && e.stack ? e.stack : e);
-    res.status(500).json({ error: 'Error interno', detalle: e.message || e });
+    console.error('Error en /api/ruta', e.message);
+    res.status(500).json({ error: 'Error obteniendo ruta' });
   }
 });
 
-
-
-
-
+// Iniciar el servidor
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log('API listening on', PORT));

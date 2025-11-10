@@ -43,42 +43,60 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadTruckPreview();
 
-  document.getElementById("camionForm").addEventListener("submit", async (ev) => {
-    ev.preventDefault();
-    const tipo = document.getElementById("tipoCamion").value;
-    const pesoKg = Number(document.getElementById("peso").value) || 0;
-    const alto = parseFloat(document.getElementById("alto").value) || 0;
-    const ancho = parseFloat(document.getElementById("ancho").value) || 0;
+document.getElementById("camionForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
 
-    const truckData = { tipo, pesoKg, alto, ancho, updatedAt: new Date().toISOString() };
+  const tipo = document.getElementById("tipoCamion").value.trim();
+  // usar parseFloat y controlar NaN
+  const pesoRaw = document.getElementById("peso").value.trim();
+  const pesoKg = pesoRaw === "" ? null : parseFloat(pesoRaw);
+  const altoRaw = document.getElementById("alto").value.trim();
+  const alto = altoRaw === "" ? null : parseFloat(altoRaw);
+  const anchoRaw = document.getElementById("ancho").value.trim();
+  const ancho = anchoRaw === "" ? null : parseFloat(anchoRaw);
 
-    // save local
-    localStorage.setItem(TRUCK_KEY, JSON.stringify(truckData));
-    loadTruckPreview();
-
-    // try save on backend if token exists
-    const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        const res = await fetch(`${API_BASE}/api/truck`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify(truckData)
-        });
-        const j = await res.json();
-        if (res.ok && j.truck) {
-          localStorage.setItem(TRUCK_KEY, JSON.stringify(j.truck));
-          document.getElementById("preview").textContent = JSON.stringify(j.truck, null, 2);
-        } else {
-          console.warn('Backend no guardó truck:', j);
-        }
-      } catch (e) {
-        console.warn('No se pudo guardar config en backend:', e);
-      }
+  // Validación mínima: pide peso si está vacío (opcional)
+  if (pesoKg === null || Number.isNaN(pesoKg)) {
+    if (!confirm("No ingresaste peso. ¿Deseas guardar la configuración sin peso?")) {
+      return;
     }
+  }
 
-    alert('Configuración guardada ✅');
-  });
+  const truckData = { tipo, pesoKg, alto, ancho, updatedAt: new Date().toISOString() };
+
+  // Guardar local (backend fallback)
+  localStorage.setItem(TRUCK_KEY, JSON.stringify(truckData));
+  loadTruckPreview();
+
+  // Guardar en backend si hay token
+  const token = localStorage.getItem('token');
+  if (token) {
+    try {
+      const res = await fetch(`${API_BASE}/api/truck`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify(truckData)
+      });
+      const j = await res.json();
+      if (res.ok && j.truck) {
+        // asegurarnos de que localStorage queda sincronizado con DB
+        localStorage.setItem(TRUCK_KEY, JSON.stringify(j.truck));
+      } else {
+        console.warn('Backend no guardó truck:', j);
+      }
+    } catch (e) {
+      console.warn('No se pudo guardar config en backend:', e);
+    }
+  }
+
+  alert('Configuración guardada ✅ Redirigiendo al mapa...');
+  window.location.href = "mapa.html";
+});
+
+
 
   document.getElementById("borrarBtn").addEventListener("click", () => {
     if (!confirm("¿Borrar configuración guardada?")) return;

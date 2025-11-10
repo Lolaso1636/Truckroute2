@@ -34,22 +34,27 @@ document.addEventListener("DOMContentLoaded", () => {
     return await geocodeAddressProxy(inputText);
   }
 
-  async function loadTruckConfig() {
-    // 1) localStorage fallback
-    const local = localStorage.getItem('truckroute_truckConfig');
-    if (local) {
-      try { return JSON.parse(local); } catch {}
-    }
-    // 2) si hay token, intentar backend
-    const token = localStorage.getItem('token');
-    if (!token) return null;
-    try {
-      const resp = await fetch(`${API_BASE}/api/truck`, { headers: { 'Authorization': 'Bearer ' + token }});
-      if (!resp.ok) return null;
-      const j = await resp.json();
-      return j.truck || null;
-    } catch (e) { console.warn('loadTruckConfig error', e); return null; }
+async function loadTruckConfig() {
+  const local = localStorage.getItem('truckroute_truckConfig');
+  if (local) {
+    try { return JSON.parse(local); } catch {}
   }
+
+  const token = localStorage.getItem('token');
+  if (!token) return null;
+  try {
+    const resp = await fetch(`${API_BASE}/api/truck`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!resp.ok) return null;
+    const j = await resp.json();
+    return j.truck || null;
+  } catch (e) {
+    console.warn('loadTruckConfig error', e);
+    return null;
+  }
+}
+
 
   // factors
   const TipoFactors = { turbo: 0.95, camion: 1.00, mula: 1.10, grua: 1.15, patineta: 1.05 };
@@ -128,8 +133,9 @@ document.addEventListener("DOMContentLoaded", () => {
       // prepara body para proxy ORS (driving-hgv usa profile params si se envían)
             // --- NUEVO BLOQUE: llamada directa al backend ---
       const truck = await loadTruckConfig();
-      const pesoKg = truck ? Number(truck.pesoKg || 0) : 0;
+      const pesoKg = truck && (truck.pesoKg ?? truck.peso_kg) ? Number(truck.pesoKg ?? truck.peso_kg) : 0;
       const tipo = truck ? (truck.tipo || 'camion') : 'camion';
+
 
       // enviar coordenadas al backend
       const startParam = `${start[1]},${start[0]}`; // lng,lat
